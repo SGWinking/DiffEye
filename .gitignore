@@ -1,0 +1,10 @@
+node_modules/
+runs/
+Diffchecker/
+image-history.json
+npm-debug.log*
+.DS_Store
+Thumbs.db
+*.pyc
+__pycache__/
+.env

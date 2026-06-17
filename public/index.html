@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DiffEye</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>DiffEye</h1>
+        <p>重明 | DiffEye · CHONGMING | DiffEye</p>
+      </div>
+      <div id="status" class="status">待选择图片</div>
+    </header>
+
+    <section class="compare-panel">
+      <form id="compareForm" class="controls">
+        <label class="file-drop" for="baseInput" data-dropzone="base">
+          <span>第一张图</span>
+          <strong id="baseName">拖入或点击选择</strong>
+          <input id="baseInput" name="base" type="file" accept="image/*">
+        </label>
+
+        <label class="file-drop" for="compareInput" data-dropzone="compare">
+          <span>第二张图</span>
+          <strong id="compareName">拖入或点击选择</strong>
+          <input id="compareInput" name="compare" type="file" accept="image/*">
+        </label>
+
+        <div class="modebar">
+          <label><input type="radio" name="mode" value="mural" checked> 壁画纹样</label>
+          <label><input type="radio" name="mode" value="pixel"> 像素差异</label>
+          <label class="range-field">灵敏度 <input id="sensitivity" name="sensitivity" type="range" min="1" max="10" value="5"> <span id="sensitivityValue">5</span></label>
+          <label class="number-field">最小区域 <input name="minArea" type="number" min="40" max="5000" value="280"></label>
+          <label class="number-field">检测数量 <input name="maxRegions" type="number" min="20" max="300" value="120"></label>
+        </div>
+
+        <button id="compareButton" type="submit">开始比较</button>
+
+        <div class="history-row">
+          <label>第一张历史 <select id="baseHistorySelect"></select></label>
+          <label>第二张历史 <select id="compareHistorySelect"></select></label>
+          <button id="refreshHistoryButton" class="tool-button" type="button">刷新历史</button>
+          <input id="baseHistoryPath" name="baseHistoryPath" type="hidden">
+          <input id="compareHistoryPath" name="compareHistoryPath" type="hidden">
+        </div>
+      </form>
+    </section>
+
+    <section class="metrics">
+      <div><span>结果</span><strong id="matchText">-</strong></div>
+      <div><span id="countLabel">边缘差异像素</span><strong id="diffCount">-</strong></div>
+      <div><span>差异比例</span><strong id="diffPercent">-</strong></div>
+      <div><span>对齐</span><strong id="alignText">-</strong></div>
+    </section>
+
+    <section class="workspace">
+      <section class="main-viewers">
+        <article class="viewer-card">
+          <header>
+            <h2>前后对比</h2>
+            <div class="viewer-tools">
+              <div class="segment-control">
+                <label><input type="radio" name="viewMode" value="split" checked> 滑块</label>
+                <label><input type="radio" name="viewMode" value="opacity"> 透明度</label>
+              </div>
+              <label id="opacityControl" class="opacity-control">后图透明度 <input id="opacitySlider" type="range" min="0" max="100" value="55"></label>
+              <label>缩放 <input id="compareZoom" type="range" min="50" max="200" value="100"></label>
+              <span id="compareZoomText">100%</span>
+              <button id="compareMaxButton" class="tool-button" type="button">最大化</button>
+            </div>
+          </header>
+          <div class="image-stage" id="compareStage">
+            <div class="zoom-layer slider-layer" id="compareLayer">
+              <img id="beforeImage" class="base-image" alt="第一张">
+              <div id="afterClip" class="after-clip">
+                <img id="afterImage" alt="第二张">
+              </div>
+              <button id="sliderHandle" class="slider-handle" type="button" aria-label="拖动对比滑块"></button>
+            </div>
+          </div>
+        </article>
+
+        <article class="viewer-card">
+          <header>
+            <h2>完整结构差异图</h2>
+            <div class="viewer-tools">
+              <label>缩放 <input id="diffZoom" type="range" min="50" max="200" value="100"></label>
+              <span id="diffZoomText">100%</span>
+              <button id="diffMaxButton" class="tool-button" type="button">最大化</button>
+            </div>
+          </header>
+          <div class="image-stage" id="diffStage">
+            <div class="zoom-layer diff-layer" id="diffLayer">
+              <img id="resultDiff" alt="结构差异图">
+              <div id="boxLayer" class="box-layer"></div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <aside class="change-list">
+        <header>
+          <h2>变化区域</h2>
+          <span id="regionCount">0</span>
+        </header>
+        <div id="regionList" class="region-list"></div>
+      </aside>
+    </section>
+  </main>
+
+  <div id="regionModal" class="modal" hidden>
+    <button id="modalClose" class="modal-close" type="button">关闭</button>
+    <img id="modalImage" alt="变化区域放大图">
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "diffeye",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DiffEye visual review center for image structure and pixel comparison.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "odiff-bin": "^4.3.8"
+  }
+}
