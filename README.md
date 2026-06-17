@@ -8,7 +8,7 @@ DiffEye is a local visual review center for comparing image structure, linework,
 ## Features
 
 - Structure comparison mode for linework and pattern differences.
-- Pixel comparison mode powered by ODiff.
+- Pixel comparison mode for strict image difference checks.
 - Drag-and-drop image input.
 - Image history picker for previously uploaded images.
 - Before/after split view and opacity overlay view.
@@ -75,6 +75,15 @@ pip install opencv-python pillow numpy
 ## License
 
 BSD 3-Clause License. See [LICENSE](LICENSE).
+
+## Third-Party Dependencies
+
+DiffEye uses third-party open-source packages through package managers. Their
+source code is not copied into this repository.
+
+- `odiff-bin`, MIT License, used as an npm dependency for pixel comparison.
+- `express`, `multer`, and their npm dependency tree, installed by npm.
+- `opencv-python`, `pillow`, and `numpy`, installed by pip for structure comparison.
 
 ## Author
 
