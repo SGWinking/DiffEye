@@ -53,6 +53,7 @@ let currentRegions = [];
 let selectedRegionId = null;
 let splitValue = 50;
 let draggingSplit = false;
+let modalScale = 2;
 
 function ensureEdgeMethodControl() {
   if (!modebar || document.querySelector('[name="edgeMethod"]')) return;
@@ -278,8 +279,19 @@ function selectRegion(id, focusDiff) {
 function openRegion(id) {
   const region = currentRegions.find((item) => item.id === id);
   if (!region) return;
+  modalScale = 2;
+  modalImage.style.width = "";
   modalImage.src = `${region.cropUrl}?t=${Date.now()}`;
   modal.hidden = false;
+}
+
+function updateModalZoom() {
+  if (!modalImage.naturalWidth) return;
+  modalImage.style.width = `${Math.max(1, Math.round(modalImage.naturalWidth * modalScale))}px`;
+}
+
+function closeModal() {
+  modal.hidden = true;
 }
 
 baseInput.addEventListener("change", () => {
@@ -303,11 +315,20 @@ resultDiff.addEventListener("load", syncLayerSizes);
 window.addEventListener("resize", syncLayerSizes);
 compareMaxButton.addEventListener("click", () => toggleMaximized(compareMaxButton.closest(".viewer-card")));
 diffMaxButton.addEventListener("click", () => toggleMaximized(diffMaxButton.closest(".viewer-card")));
-modalClose.addEventListener("click", () => {
-  modal.hidden = true;
-});
+modalImage.addEventListener("load", updateModalZoom);
+modalClose.addEventListener("click", closeModal);
 modal.addEventListener("click", (event) => {
-  if (event.target === modal) modal.hidden = true;
+  if (event.target === modal) closeModal();
+});
+modal.addEventListener("wheel", (event) => {
+  if (modal.hidden) return;
+  event.preventDefault();
+  const direction = event.deltaY < 0 ? 1 : -1;
+  modalScale = Math.max(0.5, Math.min(6, modalScale + direction * 0.18));
+  updateModalZoom();
+}, { passive: false });
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !modal.hidden) closeModal();
 });
 
 for (const input of viewModeInputs) input.addEventListener("change", updateViewMode);

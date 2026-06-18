@@ -518,8 +518,9 @@ button:disabled {
   inset: 0;
   z-index: 20;
   display: grid;
-  place-items: center;
-  padding: 34px;
+  place-items: start center;
+  overflow: auto;
+  padding: 72px 34px 48px;
   background: rgba(18, 24, 31, 0.78);
 }
 
@@ -528,18 +529,26 @@ button:disabled {
 }
 
 .modal img {
-  max-width: min(1200px, 94vw);
-  max-height: 86vh;
+  max-width: none;
+  max-height: none;
   border-radius: 6px;
   background: white;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.38);
   object-fit: contain;
+  transform-origin: center center;
 }
 
 .modal-close {
   position: fixed;
-  top: 18px;
-  right: 22px;
-  padding: 8px 12px;
+  top: 16px;
+  right: 18px;
+  z-index: 21;
+  min-width: 42px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  background: rgba(32, 39, 51, 0.94);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
 }
 
 .author-mark {
