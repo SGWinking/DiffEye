@@ -542,6 +542,20 @@ button:disabled {
   padding: 8px 12px;
 }
 
+.author-mark {
+  position: fixed;
+  right: 14px;
+  bottom: 10px;
+  z-index: 5;
+  padding: 5px 8px;
+  border: 1px solid rgba(216, 222, 230, 0.9);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--muted);
+  font-size: 12px;
+  backdrop-filter: blur(6px);
+}
+
 .has-maximized-viewer {
   overflow: hidden;
 }
