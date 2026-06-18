@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import subprocess
 import sys
 
 import cv2
@@ -92,6 +93,37 @@ def adaptive_edges(gray, sensitivity):
     return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=1)
 
 
+def dexined_edges(image, out_dir, name):
+    input_path = os.path.join(out_dir, f"{name}-dexined-input.png")
+    output_path = os.path.join(out_dir, f"{name}-dexined-edge.png")
+    imwrite_unicode(input_path, image)
+
+    runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dexined_edges.py")
+    completed = subprocess.run(
+        [sys.executable, runner, input_path, output_path],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr or completed.stdout or "DexiNed edge extraction failed.")
+
+    edge = imread_unicode(output_path)
+    edge = cv2.cvtColor(edge, cv2.COLOR_BGR2GRAY)
+    if edge.shape[:2] != image.shape[:2]:
+        edge = cv2.resize(edge, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_AREA)
+    _, binary = cv2.threshold(edge, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    kernel = np.ones((2, 2), np.uint8)
+    return cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+
+def extract_edges(image, gray, sensitivity, edge_method, out_dir, name):
+    if edge_method == "dexined":
+        return dexined_edges(image, out_dir, name)
+    return adaptive_edges(gray, sensitivity)
+
+
 def build_region_crop(base, compare, x, y, w, h, pad=16):
     height, width = base.shape[:2]
     x1 = max(0, x - pad)
@@ -156,7 +188,7 @@ def remove_nested_regions(candidates):
     return sorted(keep, key=lambda item: item[5], reverse=True)
 
 
-def compare_mural(base_path, compare_path, out_dir, sensitivity=5, min_area=280, max_regions=80):
+def compare_mural(base_path, compare_path, out_dir, sensitivity=5, min_area=280, max_regions=80, edge_method="canny"):
     os.makedirs(out_dir, exist_ok=True)
 
     base = imread_unicode(base_path)
@@ -168,8 +200,9 @@ def compare_mural(base_path, compare_path, out_dir, sensitivity=5, min_area=280,
     base_gray = normalize_gray(base)
     compare_gray = normalize_gray(aligned_compare)
 
-    base_edges = adaptive_edges(base_gray, sensitivity)
-    compare_edges = adaptive_edges(compare_gray, sensitivity)
+    edge_method = edge_method if edge_method in {"canny", "dexined"} else "canny"
+    base_edges = extract_edges(base, base_gray, sensitivity, edge_method, out_dir, "base")
+    compare_edges = extract_edges(aligned_compare, compare_gray, sensitivity, edge_method, out_dir, "compare")
 
     tolerance = max(1, int(2 + sensitivity * 0.35))
     tol_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (tolerance * 2 + 1, tolerance * 2 + 1))
@@ -254,6 +287,7 @@ def compare_mural(base_path, compare_path, out_dir, sensitivity=5, min_area=280,
         "regionCount": len(regions),
         "scale": scale,
         "alignment": align_info,
+        "edgeMethod": edge_method,
         "outputs": {
             "base": "mural-base.png",
             "overlay": "mural-overlay.png",
@@ -266,7 +300,7 @@ def compare_mural(base_path, compare_path, out_dir, sensitivity=5, min_area=280,
 
 def main():
     if len(sys.argv) < 4:
-        raise SystemExit("Usage: mural_compare.py <base> <compare> <out_dir> [sensitivity] [min_area] [max_regions]")
+        raise SystemExit("Usage: mural_compare.py <base> <compare> <out_dir> [sensitivity] [min_area] [max_regions] [edge_method]")
 
     base_path = sys.argv[1]
     compare_path = sys.argv[2]
@@ -274,6 +308,7 @@ def main():
     sensitivity = int(sys.argv[4]) if len(sys.argv) > 4 else 5
     min_area = int(sys.argv[5]) if len(sys.argv) > 5 else 280
     max_regions = int(sys.argv[6]) if len(sys.argv) > 6 else 120
+    edge_method = sys.argv[7] if len(sys.argv) > 7 else "canny"
 
     result = compare_mural(
         base_path,
@@ -282,6 +317,7 @@ def main():
         sensitivity=sensitivity,
         min_area=min_area,
         max_regions=max_regions,
+        edge_method=edge_method,
     )
     print(json.dumps(result, ensure_ascii=False))
 

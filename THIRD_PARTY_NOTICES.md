@@ -47,3 +47,19 @@ committed to this repository.
 
 Python packages are installed by pip into the user's Python environment and are
 not committed to this repository.
+
+## Optional DexiNed fine line mode
+
+- `DexiNed`  
+  License: MIT  
+  Repository: https://github.com/xavysp/DexiNed  
+  Used optionally for AI-assisted edge detection in fine line mode.
+
+DexiNed source code and checkpoint files are not committed to this repository.
+When the user runs `setup-dexined.bat`, the official repository is cloned into
+`third_party/DexiNed/`, which is ignored by git. Users must download the
+official checkpoint separately from the DexiNed README and place it at:
+
+```text
+D:\DIFF\third_party\DexiNed\checkpoints\BIPED\10\10_model.pth
+```

@@ -1,6 +1,7 @@
 node_modules/
 runs/
 Diffchecker/
+third_party/
 image-history.json
 npm-debug.log*
 .DS_Store

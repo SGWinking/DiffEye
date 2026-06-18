@@ -13,6 +13,7 @@ const compareHistorySelect = document.querySelector("#compareHistorySelect");
 const baseHistoryPath = document.querySelector("#baseHistoryPath");
 const compareHistoryPath = document.querySelector("#compareHistoryPath");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
+const modebar = document.querySelector(".modebar");
 
 const beforeImage = document.querySelector("#beforeImage");
 const afterImage = document.querySelector("#afterImage");
@@ -52,6 +53,28 @@ let currentRegions = [];
 let selectedRegionId = null;
 let splitValue = 50;
 let draggingSplit = false;
+
+function ensureEdgeMethodControl() {
+  if (!modebar || document.querySelector('[name="edgeMethod"]')) return;
+
+  const label = document.createElement("label");
+  label.className = "number-field";
+  label.innerHTML = `
+    线条模式
+    <select name="edgeMethod" title="DexiNed 需要先运行 setup-dexined.bat 并放入模型权重">
+      <option value="canny" selected>快速 Canny</option>
+      <option value="dexined">精细 DexiNed</option>
+    </select>
+  `;
+
+  const maxRegionsInput = modebar.querySelector('input[name="maxRegions"]');
+  const maxRegionsLabel = maxRegionsInput?.closest("label");
+  if (maxRegionsLabel) {
+    maxRegionsLabel.insertAdjacentElement("afterend", label);
+  } else {
+    modebar.appendChild(label);
+  }
+}
 
 function setInputFile(input, file) {
   const files = new DataTransfer();
@@ -315,6 +338,7 @@ window.addEventListener("pointerup", () => {
 
 bindDropzone(baseDropzone, baseInput, baseName);
 bindDropzone(compareDropzone, compareInput, compareName);
+ensureEdgeMethodControl();
 updateViewMode();
 loadHistory().catch(() => {});
 

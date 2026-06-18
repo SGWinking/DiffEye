@@ -125,12 +125,21 @@ function normalizeImageExtension(file) {
   return file;
 }
 
-function runMuralCompare(basePath, comparePath, outDir, sensitivity, minArea, maxRegions) {
+function runMuralCompare(basePath, comparePath, outDir, sensitivity, minArea, maxRegions, edgeMethod) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(rootDir, "mural_compare.py");
     execFile(
       pythonPath,
-      [scriptPath, basePath, comparePath, outDir, String(sensitivity), String(minArea), String(maxRegions)],
+      [
+        scriptPath,
+        basePath,
+        comparePath,
+        outDir,
+        String(sensitivity),
+        String(minArea),
+        String(maxRegions),
+        edgeMethod
+      ],
       { cwd: rootDir, timeout: 180000, windowsHide: true, maxBuffer: 1024 * 1024 * 10 },
       (error, stdout, stderr) => {
         if (error) {
@@ -193,7 +202,8 @@ app.post(
         const sensitivity = Math.max(1, Math.min(10, Number(req.body.sensitivity || 5)));
         const minArea = Math.max(40, Math.min(5000, Number(req.body.minArea || 280)));
         const maxRegions = Math.max(20, Math.min(300, Number(req.body.maxRegions || 120)));
-        const result = await runMuralCompare(base.path, target.path, runDir, sensitivity, minArea, maxRegions);
+        const edgeMethod = req.body.edgeMethod === "dexined" ? "dexined" : "canny";
+        const result = await runMuralCompare(base.path, target.path, runDir, sensitivity, minArea, maxRegions, edgeMethod);
 
         res.json({
           mode,
