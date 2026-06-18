@@ -9,9 +9,9 @@ DiffEye is a local visual review and comparison tool for checking linework, cont
 
 ## 缘起 / Origin
 
-DiffEye 起源于一个很具体的需求：当两张图的颜色深浅不同，但图案和线条可能相同或只发生细微变化时，普通像素比对会把大量颜色差异误判为变化。DiffEye 因此加入了结构比对流程，先对齐图像，再提取线条与边缘结构，帮助使用者把注意力放在真正需要复核的区域。
+DiffEye 起源于山西大云禅院的壁画修复工作。项目中有大量任务需要比对 AI 生成图像与原始图像之间的差别，如果完全依赖人力逐张审看，会非常耗时。因此我们制作了这个小工具，用于辅助比对线条、轮廓、纹样、结构与像素差异，减轻人工审校负担，也为后续修复工作提供更稳定的工具支持。
 
-DiffEye began from a practical need: when two images have different brightness or color depth, ordinary pixel comparison often marks too many false differences. DiffEye adds a structure-comparison workflow that aligns images first, extracts line and edge structure, and helps reviewers focus on regions that deserve manual inspection.
+DiffEye originated from the mural restoration work at Dayun Chanyuan in Shanxi, China. The project involved many tasks that required comparing AI-generated images with original images. Reviewing every image pair manually would have been extremely time-consuming, so this tool was created to assist with comparing linework, contours, patterns, structure, and pixel-level differences. It reduces the burden of manual review and provides practical support for subsequent restoration work.
 
 ## 重明之意 / Why ChongMing
 
