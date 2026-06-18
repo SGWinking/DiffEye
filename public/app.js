@@ -14,6 +14,8 @@ const baseHistoryPath = document.querySelector("#baseHistoryPath");
 const compareHistoryPath = document.querySelector("#compareHistoryPath");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
 const modebar = document.querySelector(".modebar");
+const historyRow = document.querySelector(".history-row");
+const metricsPanel = document.querySelector(".metrics");
 
 const beforeImage = document.querySelector("#beforeImage");
 const afterImage = document.querySelector("#afterImage");
@@ -43,6 +45,7 @@ const alignText = document.querySelector("#alignText");
 const countLabel = document.querySelector("#countLabel");
 const regionCount = document.querySelector("#regionCount");
 const regionList = document.querySelector("#regionList");
+const regionPanelTitle = document.querySelector(".change-list h2");
 const sensitivity = document.querySelector("#sensitivity");
 const sensitivityValue = document.querySelector("#sensitivityValue");
 const modal = document.querySelector("#regionModal");
@@ -53,10 +56,32 @@ let currentRegions = [];
 let selectedRegionId = null;
 let splitValue = 50;
 let draggingSplit = false;
-let modalScale = 2;
+let modalScale = 3;
+let diffLayerImages = {};
+let activeRegionId = null;
+const reviewLabels = {
+  pass: "通过",
+  review: "复核",
+  issue: "问题",
+  ignore: "忽略"
+};
 
 function ensureEdgeMethodControl() {
   if (!modebar || document.querySelector('[name="edgeMethod"]')) return;
+
+  const maxAreaLabel = document.createElement("label");
+  maxAreaLabel.className = "number-field";
+  maxAreaLabel.innerHTML = `
+    最大区域%
+    <input name="maxAreaPercent" type="number" min="1" max="95" value="60" title="超过整张图这个比例的差异聚集区会被过滤">
+  `;
+
+  const toleranceLabel = document.createElement("label");
+  toleranceLabel.className = "number-field";
+  toleranceLabel.innerHTML = `
+    容错px
+    <input name="tolerancePixels" type="number" min="1" max="30" value="10" title="数值越大，越会忽略轻微错位和笔墨边缘变化">
+  `;
 
   const label = document.createElement("label");
   label.className = "number-field";
@@ -71,10 +96,122 @@ function ensureEdgeMethodControl() {
   const maxRegionsInput = modebar.querySelector('input[name="maxRegions"]');
   const maxRegionsLabel = maxRegionsInput?.closest("label");
   if (maxRegionsLabel) {
-    maxRegionsLabel.insertAdjacentElement("afterend", label);
+    maxRegionsLabel.insertAdjacentElement("afterend", toleranceLabel);
+    toleranceLabel.insertAdjacentElement("afterend", maxAreaLabel);
+    maxAreaLabel.insertAdjacentElement("afterend", label);
   } else {
+    modebar.appendChild(toleranceLabel);
+    modebar.appendChild(maxAreaLabel);
     modebar.appendChild(label);
   }
+}
+
+function compactHistoryAndMetrics() {
+  if (historyRow && metricsPanel && metricsPanel.parentElement !== historyRow) {
+    historyRow.appendChild(metricsPanel);
+  }
+}
+
+function applyDefaultParameters() {
+  const minAreaInput = form.querySelector('input[name="minArea"]');
+  if (minAreaInput && minAreaInput.value === "280") minAreaInput.value = "2048";
+}
+
+function ensureDiffLegend() {
+  if (document.querySelector(".diff-legend")) return;
+  const diffHeader = diffMaxButton?.closest("header");
+  const tools = diffHeader?.querySelector(".viewer-tools");
+  if (!tools) return;
+
+  const legend = document.createElement("div");
+  legend.className = "diff-legend";
+  legend.innerHTML = `
+    <span><i class="legend-red"></i>新增</span>
+    <span><i class="legend-blue"></i>缺失</span>
+    <span><i class="legend-yellow"></i>偏移</span>
+  `;
+  tools.insertAdjacentElement("afterbegin", legend);
+}
+
+function ensureDiffLegend() {
+  if (document.querySelector(".diff-legend")) return;
+  const diffHeader = diffMaxButton?.closest("header");
+  const tools = diffHeader?.querySelector(".viewer-tools");
+  if (!tools) return;
+
+  const legend = document.createElement("div");
+  legend.className = "diff-legend";
+  legend.innerHTML = `
+    <label><input type="checkbox" data-diff-layer="new" checked><i class="legend-red"></i>新增</label>
+    <label><input type="checkbox" data-diff-layer="missing" checked><i class="legend-blue"></i>缺失</label>
+    <label><input type="checkbox" data-diff-layer="shifted" checked><i class="legend-yellow"></i>偏移</label>
+  `;
+  tools.insertAdjacentElement("afterbegin", legend);
+  legend.addEventListener("change", updateDiffLayerVisibility);
+}
+
+function ensureRegionPanelTitle() {
+  if (regionPanelTitle) regionPanelTitle.textContent = "聚焦区域";
+}
+
+function reviewStorageKey(id) {
+  const base = baseHistoryPath.value || baseInput.files?.[0]?.name || baseName.textContent || "base";
+  const compare = compareHistoryPath.value || compareInput.files?.[0]?.name || compareName.textContent || "compare";
+  return `diffeeye-review:${base}:${compare}:${id}`;
+}
+
+function getRegionReview(id) {
+  return localStorage.getItem(reviewStorageKey(id)) || "";
+}
+
+function setRegionReview(id, value) {
+  if (!id) return;
+  localStorage.setItem(reviewStorageKey(id), value);
+  renderReviewActions(id);
+  updateRegionReviewBadges();
+}
+
+function ensureReviewActions() {
+  let actions = document.querySelector("#modalReviewActions");
+  if (actions) return actions;
+
+  actions = document.createElement("div");
+  actions.id = "modalReviewActions";
+  actions.className = "modal-review-actions";
+  actions.innerHTML = Object.entries(reviewLabels)
+    .map(([value, label]) => `<button type="button" data-review="${value}">${label}</button>`)
+    .join("");
+  actions.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-review]");
+    if (button) setRegionReview(activeRegionId, button.dataset.review);
+  });
+  modal.insertBefore(actions, modalImage);
+  return actions;
+}
+
+function renderReviewActions(id) {
+  const actions = ensureReviewActions();
+  const current = getRegionReview(id);
+  actions.querySelectorAll("[data-review]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.review === current);
+  });
+}
+
+function updateRegionReviewBadges() {
+  document.querySelectorAll(".region-card").forEach((card) => {
+    const current = getRegionReview(card.dataset.id);
+    let badge = card.querySelector(".review-badge");
+    if (!current) {
+      badge?.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "review-badge";
+      card.querySelector("div")?.appendChild(badge);
+    }
+    badge.textContent = reviewLabels[current] || current;
+  });
 }
 
 function setInputFile(input, file) {
@@ -155,6 +292,34 @@ function setImage(image, url) {
   if (url) image.src = `${url}?t=${Date.now()}`;
 }
 
+function clearDiffLayers() {
+  for (const image of Object.values(diffLayerImages)) image.remove();
+  diffLayerImages = {};
+}
+
+function setDiffLayers(layers) {
+  clearDiffLayers();
+  if (!layers) return;
+
+  for (const [name, url] of Object.entries(layers)) {
+    const image = document.createElement("img");
+    image.className = "diff-overlay-img";
+    image.dataset.diffLayerImage = name;
+    image.alt = name;
+    image.src = `${url}?t=${Date.now()}`;
+    diffLayer.insertBefore(image, boxLayer);
+    diffLayerImages[name] = image;
+  }
+  updateDiffLayerVisibility();
+}
+
+function updateDiffLayerVisibility() {
+  document.querySelectorAll("[data-diff-layer]").forEach((input) => {
+    const image = diffLayerImages[input.dataset.diffLayer];
+    if (image) image.hidden = !input.checked;
+  });
+}
+
 function updateSplit() {
   afterClip.style.clipPath = `inset(0 0 0 ${splitValue}%)`;
   sliderHandle.style.left = `${splitValue}%`;
@@ -221,6 +386,11 @@ function renderBoxes(regions) {
     box.style.width = `${(region.w / resultDiff.naturalWidth) * 100}%`;
     box.style.height = `${(region.h / resultDiff.naturalHeight) * 100}%`;
     box.addEventListener("click", () => selectRegion(region.id, true));
+    box.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      selectRegion(region.id, true, true);
+      openRegion(region.id);
+    });
     boxLayer.appendChild(box);
   }
 }
@@ -249,22 +419,34 @@ function renderRegions(regions) {
       <img src="${region.cropUrl}?t=${Date.now()}" alt="区域 ${region.id}">
       <div>
         <strong>#${region.id}</strong>
-        <span>${region.w}x${region.h}px</span>
-        <span>边缘差异 ${region.edgePixels}</span>
+        <span>尺寸 ${region.w}x${region.h}px</span>
+        <span>新增 ${region.newPixels ?? 0} / 缺失 ${region.missingPixels ?? 0}</span>
+        <span>偏移 ${region.shiftedPixels ?? 0} / 密度 ${region.density ?? 0}%</span>
       </div>
     `;
     item.addEventListener("click", () => selectRegion(region.id, true));
-    item.addEventListener("dblclick", () => openRegion(region.id));
+    item.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      item.blur();
+      openRegion(region.id);
+    });
     regionList.appendChild(item);
   }
+  updateRegionReviewBadges();
 }
 
-function selectRegion(id, focusDiff) {
+function selectRegion(id, focusDiff, focusList = false) {
   selectedRegionId = id;
   const region = currentRegions.find((item) => item.id === id);
   document.querySelectorAll(".region-card, .region-box").forEach((node) => {
     node.classList.toggle("selected", node.dataset.id === String(id));
   });
+
+  if (focusList) {
+    const card = regionList.querySelector(`.region-card[data-id="${id}"]`);
+    if (card) card.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
   if (!region || !focusDiff || !resultDiff.naturalWidth || !resultDiff.naturalHeight) return;
 
   const scaleX = diffLayer.clientWidth / resultDiff.naturalWidth;
@@ -279,9 +461,11 @@ function selectRegion(id, focusDiff) {
 function openRegion(id) {
   const region = currentRegions.find((item) => item.id === id);
   if (!region) return;
-  modalScale = 2;
+  activeRegionId = id;
+  modalScale = 3;
   modalImage.style.width = "";
   modalImage.src = `${region.cropUrl}?t=${Date.now()}`;
+  renderReviewActions(id);
   modal.hidden = false;
 }
 
@@ -324,7 +508,7 @@ modal.addEventListener("wheel", (event) => {
   if (modal.hidden) return;
   event.preventDefault();
   const direction = event.deltaY < 0 ? 1 : -1;
-  modalScale = Math.max(0.5, Math.min(6, modalScale + direction * 0.18));
+  modalScale = Math.max(0.5, Math.min(8, modalScale + direction * 0.25));
   updateModalZoom();
 }, { passive: false });
 window.addEventListener("keydown", (event) => {
@@ -359,7 +543,11 @@ window.addEventListener("pointerup", () => {
 
 bindDropzone(baseDropzone, baseInput, baseName);
 bindDropzone(compareDropzone, compareInput, compareName);
+compactHistoryAndMetrics();
+applyDefaultParameters();
 ensureEdgeMethodControl();
+ensureDiffLegend();
+ensureRegionPanelTitle();
 updateViewMode();
 loadHistory().catch(() => {});
 
@@ -391,7 +579,8 @@ form.addEventListener("submit", async (event) => {
     const isMural = result.mode === "mural";
     setImage(beforeImage, result.processedBaseUrl || result.baseUrl);
     setImage(afterImage, isMural ? result.alignedCompareUrl : result.compareUrl);
-    setImage(resultDiff, result.diffUrl);
+    setImage(resultDiff, result.diffBaseUrl || result.diffUrl);
+    setDiffLayers(result.diffLayers);
 
     countLabel.textContent = isMural ? "边缘差异像素" : "差异像素";
     matchText.textContent = result.match ? "未发现明显差异" : "发现差异";

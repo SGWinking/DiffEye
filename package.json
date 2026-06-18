@@ -2,7 +2,7 @@
   "name": "diffeye",
   "version": "1.0.0",
   "description": "DiffEye visual review center for image structure and pixel comparison.",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

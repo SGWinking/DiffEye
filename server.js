@@ -125,7 +125,17 @@ function normalizeImageExtension(file) {
   return file;
 }
 
-function runMuralCompare(basePath, comparePath, outDir, sensitivity, minArea, maxRegions, edgeMethod) {
+function runMuralCompare(
+  basePath,
+  comparePath,
+  outDir,
+  sensitivity,
+  minArea,
+  maxRegions,
+  edgeMethod,
+  maxAreaPercent,
+  tolerancePixels
+) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(rootDir, "mural_compare.py");
     execFile(
@@ -138,7 +148,9 @@ function runMuralCompare(basePath, comparePath, outDir, sensitivity, minArea, ma
         String(sensitivity),
         String(minArea),
         String(maxRegions),
-        edgeMethod
+        edgeMethod,
+        String(maxAreaPercent),
+        String(tolerancePixels)
       ],
       { cwd: rootDir, timeout: 180000, windowsHide: true, maxBuffer: 1024 * 1024 * 10 },
       (error, stdout, stderr) => {
@@ -200,10 +212,22 @@ app.post(
 
       if (mode === "mural") {
         const sensitivity = Math.max(1, Math.min(10, Number(req.body.sensitivity || 5)));
-        const minArea = Math.max(40, Math.min(5000, Number(req.body.minArea || 280)));
+        const minArea = Math.max(40, Math.min(5000, Number(req.body.minArea || 2048)));
         const maxRegions = Math.max(20, Math.min(300, Number(req.body.maxRegions || 120)));
         const edgeMethod = req.body.edgeMethod === "dexined" ? "dexined" : "canny";
-        const result = await runMuralCompare(base.path, target.path, runDir, sensitivity, minArea, maxRegions, edgeMethod);
+        const maxAreaPercent = Math.max(1, Math.min(95, Number(req.body.maxAreaPercent || 60)));
+        const tolerancePixels = Math.max(1, Math.min(30, Number(req.body.tolerancePixels || 10)));
+        const result = await runMuralCompare(
+          base.path,
+          target.path,
+          runDir,
+          sensitivity,
+          minArea,
+          maxRegions,
+          edgeMethod,
+          maxAreaPercent,
+          tolerancePixels
+        );
 
         res.json({
           mode,
@@ -212,6 +236,12 @@ app.post(
           processedBaseUrl: `/runs/${runId}/${result.outputs.base}`,
           compareUrl,
           diffUrl: `/runs/${runId}/${result.outputs.overlay}`,
+          diffBaseUrl: `/runs/${runId}/${result.outputs.overlayBase}`,
+          diffLayers: {
+            new: `/runs/${runId}/${result.outputs.layerNew}`,
+            missing: `/runs/${runId}/${result.outputs.layerMissing}`,
+            shifted: `/runs/${runId}/${result.outputs.layerShifted}`
+          },
           maskUrl: `/runs/${runId}/${result.outputs.mask}`,
           edgesUrl: `/runs/${runId}/${result.outputs.edges}`,
           alignedCompareUrl: `/runs/${runId}/${result.outputs.alignedCompare}`,

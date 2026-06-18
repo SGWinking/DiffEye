@@ -1,5 +1,9 @@
 # Third-Party Notices
 
+DiffEye itself is licensed under the GNU Affero General Public License v3.0.
+This file lists third-party software used by DiffEye and their respective
+licenses.
+
 DiffEye depends on third-party open-source software installed through npm and
 pip. These packages are not copied into this repository; users install them
 locally with `install.bat`, `npm install`, and `pip install`.
