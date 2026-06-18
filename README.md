@@ -1,5 +1,9 @@
 # DiffEye | 重明 | 图像比对工具 V0.4
 
+<p align="center">
+  <img src="public/assets/chongming-logo.png" alt="DiffEye 重明 Logo" width="180">
+</p>
+
 **CHONGMING | DiffEye**  
 Author: **SGWinking / 上官文卿**
 
