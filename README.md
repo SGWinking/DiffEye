@@ -74,16 +74,19 @@ pip install opencv-python pillow numpy
 
 ## License
 
-BSD 3-Clause License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE).
 
 ## Third-Party Dependencies
 
 DiffEye uses third-party open-source packages through package managers. Their
 source code is not copied into this repository.
 
-- `odiff-bin`, MIT License, used as an npm dependency for pixel comparison.
-- `express`, `multer`, and their npm dependency tree, installed by npm.
-- `opencv-python`, `pillow`, and `numpy`, installed by pip for structure comparison.
+- `odiff-bin`, MIT License, installed by npm for pixel comparison.
+- `express`, MIT License, installed by npm for the local web server.
+- `multer`, MIT License, installed by npm for local image upload handling.
+- `opencv-python`, Apache-2.0 License, installed by pip for alignment and edge processing.
+- `pillow`, HPND License, installed by pip as an image-processing dependency.
+- `numpy`, BSD-3-Clause License, installed by pip for image array processing.
 
 ## Author
 

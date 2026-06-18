@@ -1,9 +1,13 @@
 # Third-Party Notices
 
 DiffEye depends on third-party open-source software installed through npm and
-pip. These packages are not copied into this repository.
+pip. These packages are not copied into this repository; users install them
+locally with `install.bat`, `npm install`, and `pip install`.
 
-## npm
+When redistributing DiffEye together with bundled dependencies, include the
+license files and notices for those bundled dependencies.
+
+## Direct npm dependencies
 
 - `odiff-bin`  
   License: MIT  
@@ -11,21 +15,35 @@ pip. These packages are not copied into this repository.
   Used for strict pixel comparison mode.
 
 - `express`  
-  Installed from npm for the local web server.
+  License: MIT  
+  Repository: https://github.com/expressjs/express  
+  Used for the local web server.
 
 - `multer`  
-  Installed from npm for local image upload handling.
+  License: MIT  
+  Repository: https://github.com/expressjs/multer  
+  Used for local image upload handling.
 
-## pip
+The npm transitive dependency tree is recorded in `package-lock.json` and is
+installed into `node_modules/` by npm. `node_modules/` is intentionally not
+committed to this repository.
+
+## Direct pip dependencies
 
 - `opencv-python`  
+  License: Apache-2.0  
+  Repository: https://github.com/opencv/opencv-python  
   Used for image alignment, edge extraction, and structure comparison.
 
-- `pillow`  
+- `Pillow`  
+  License: HPND  
+  Project: https://python-pillow.org  
   Used as an image-processing dependency.
 
 - `numpy`  
+  License: BSD-3-Clause  
+  Project: https://numpy.org  
   Used for image array processing.
 
-For the complete dependency tree and exact versions, see `package-lock.json`
-and the user's Python environment.
+Python packages are installed by pip into the user's Python environment and are
+not committed to this repository.
