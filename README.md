@@ -11,6 +11,18 @@ DiffEye 是一个本地图像结构比对工具，用于检查两张图片之间
 
 DiffEye is a local image comparison tool for reviewing linework, contours, patterns, structure, and pixel-level differences between two images.
 
+## Origin / 缘起
+
+This small tool was created for the mural recreation and restoration workflow of Dayun Chanyuan. The project requires repeated comparison between original mural scans and AI-generated or manually restored images. Reviewing every image pair by eye is slow and easy to miss subtle structural changes, so DiffEye helps highlight differences in linework, contours, patterns, and visual structure before human review.
+
+这个小工具的制作缘起，是因为我们正在推进大云禅院壁画修复与重现工作。项目中需要反复比对原始壁画扫描图与 AI 生成图、人工修复图之间的差异。如果完全依靠人工逐张查看，不仅耗时，也容易漏掉细微的结构变化。DiffEye 用于提前标出线条、轮廓、纹样和图像结构中的差异，帮助审核人员更快进入重点复核。
+
+## Why "ChongMing" / 名称含义
+
+Chongming, or 重明, refers to the Chongming bird from ancient Chinese mythology. It is associated with clear sight and the ability to discern subtle differences. The name fits this tool because DiffEye is not meant to replace expert judgment; it acts like an extra pair of careful eyes, bringing hidden visual differences into focus so reviewers can make better decisions.
+
+“重明”取自中国古代神话中的重明鸟意象。重明有明察、辨微、看见细微差异之意。这个名字适合 DiffEye，因为它并不是替代专家判断的工具，而是像一双辅助的眼睛，把图像中不容易发现的差异提前照出来，让审核人员能够更快、更稳地做出判断。
+
 ## 功能 / Features
 
 - 结构比对：适合壁画、纹样、图纸、线条和轮廓审查。
