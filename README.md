@@ -21,51 +21,56 @@ This small tool was created for the mural recreation and restoration workflow of
 
 Chongming, or 重明, refers to the Chongming bird from ancient Chinese mythology. It is associated with clear sight and the ability to discern subtle differences. The name fits this tool because DiffEye is not meant to replace expert judgment; it acts like an extra pair of careful eyes, bringing hidden visual differences into focus so reviewers can make better decisions.
 
-“重明”取自中国古代神话中的重明鸟意象。重明有明察、辨微、看见细微差异之意。这个名字适合 DiffEye，因为它并不是替代专家判断的工具，而是像一双辅助的眼睛，把图像中不容易发现的差异提前照出来，让审核人员能够更快、更稳地做出判断。
+"重明"取自中国古代神话中的重明鸟意象。重明有明察、辨微、看见细微差异之意。这个名字适合 DiffEye，因为它并不是替代专家判断的工具，而是像一双辅助的眼睛，把图像中不容易发现的差异提前照出来，让审核人员能够更快、更稳地做出判断。
 
 ## 功能 / Features
 
 - 结构比对：适合壁画、纹样、图纸、线条和轮廓审查。
 - 像素比对：适合截图、渲染图和严格像素一致性检查。
-- 自动对齐：通过 homography 对齐两张图片。
-- 三色差异图：红色新增、蓝色缺失、黄色偏移。
+- 自动对齐：通过 homography 对齐两张图片，可开关。
+- 比例检查：两张图宽高比例不一致时拒绝比对，避免扭曲。
+- 三色差异图：红色新增、蓝色缺失、黄色偏移，可单独显示/隐藏。
 - 聚焦区域：自动列出差异集中的区域。
 - 三栏局部审查：原图局部 / 后图局部 / 差异局部。
 - 人工标记：通过 / 复核 / 问题 / 忽略。
-- 可选 DexiNed 精细线条模式。
+- 键盘导航：左右键切换聚焦区域，Enter 打开弹窗。
+- 暗色模式：一键切换，记忆偏好。
+- 批量比对：多组图排队依次比对。
+- 报告导出：JSON / Markdown，含参数和审核标签。
+- 自动清理：启动时清理 7 天以上的比对缓存。
 - 本地运行，图片默认保存在本机。
 
-## 技术路线 / Technical Approach
+## 两种安装方式 / Two Ways to Install
 
-DiffEye 的结构比对流程可以简要理解为：
+### 方式一：零安装版（推荐给非技术用户）
+
+从 GitHub Releases 下载安装包：
 
 ```text
-两张图像
-→ 自动缩放与 homography 对齐
-→ 灰度归一化
-→ 提取线条/边缘
-→ 比较两张边缘图
-→ 标出新增、缺失、偏移
-→ 聚合差异点
-→ 生成聚焦区域
-→ 提供局部三栏审查
+https://github.com/SGWinking/DiffEye/releases
 ```
 
-具体来说：
+下载 `DiffEye-Setup.exe`（约 564 MB），双击即可：
 
-- **对齐**：先把第二张图主动对齐到第一张图，减少拍摄角度、裁切、轻微透视差带来的误报。
-- **线条提取**：默认使用 Canny/OpenCV 提取线条；也可以启用 DexiNed 精细线条模式，用 AI 边缘检测增强复杂纹样识别。
-- **三色差异**：红色表示后图新增线条，蓝色表示后图缺失线条，黄色表示两边都有但位置略有偏移。
-- **画框逻辑**：系统不会对每一个点单独画框，而是把相邻的差异点聚成一组，再给这一组生成一个外接矩形，形成“聚焦区域”。
-- **辅助审图**：审核人不需要从整张大图里盲找差异，可以按聚焦区域逐个复核，并通过三栏弹窗查看“原图局部 / 后图局部 / 差异局部”。
+1. 选择安装路径（默认 `C:\DiffEye`）
+2. 解压完成后自动启动并打开浏览器
+3. 开始使用，无需安装任何依赖
 
-DiffEye 不替代专家判断，它的作用是把可能有结构变化的位置提前整理出来，减少人工搜索成本，让审核人把精力集中在真正需要判断的局部。
+安装包内置完整运行环境：
 
-## 小白快速使用 / Quick Start
+| 组件 | 版本 | 说明 |
+|------|------|------|
+| Node.js | 24.15.0 | 便携版，无需系统安装 |
+| Python | 3.10.11 | Embedded 版，无需系统安装 |
+| OpenCV | 4.13.0 | 图像处理 |
+| PyTorch | 2.12.1+cpu | DexiNed 推理引擎 |
+| DexiNed | - | 模型权重已内置 (134 MB) |
 
-### 1. 安装必需软件 / Install prerequisites
+启动方式：双击安装目录下的 `启动DiffEye.bat`，按任意键停止服务。
 
-请先安装：
+### 方式二：源码版（推荐给开发者）
+
+#### 1. 安装必需软件
 
 - [Node.js LTS](https://nodejs.org/)
 - [Python 3.10+](https://www.python.org/downloads/)
@@ -76,22 +81,14 @@ DiffEye 不替代专家判断，它的作用是把可能有结构变化的位置
 Add python.exe to PATH
 ```
 
-### 2. 下载 DiffEye / Download
-
-可以在 GitHub 页面点击：
-
-```text
-Code -> Download ZIP
-```
-
-也可以使用 Git：
+#### 2. 下载源码
 
 ```powershell
 git clone https://github.com/SGWinking/DiffEye.git
 cd DiffEye
 ```
 
-### 3. 一键安装 / Install
+#### 3. 安装依赖
 
 双击运行：
 
@@ -106,7 +103,7 @@ npm install
 python -m pip install opencv-python pillow numpy
 ```
 
-### 4. 启动 / Start
+#### 4. 启动
 
 双击运行：
 
@@ -126,10 +123,12 @@ npm start
 http://localhost:5055
 ```
 
-## DexiNed 精细线条模式 / Optional DexiNed Mode
+## DexiNed 精细线条模式 / DexiNed Mode
 
-默认的 **快速 Canny** 模式不需要额外模型。  
-如果需要更精细的 AI 边缘检测，可以启用 DexiNed：
+V0.5.0 起默认使用 **精细 DexiNed** 模式，AI 边缘检测增强复杂纹样识别。
+
+- **零安装版**：DexiNed 和模型权重已内置，直接可用。
+- **源码版**：需要额外配置：
 
 1. 运行：
 
@@ -137,7 +136,7 @@ http://localhost:5055
 setup-dexined.bat
 ```
 
-2. 下载官方模型：
+2. 下载官方模型（约 134 MB）：
 
 ```text
 https://drive.google.com/file/d/1V56vGTsu7GYiQouCIKvTWl5UKCZ6yCNu/view?usp=sharing
@@ -149,11 +148,73 @@ https://drive.google.com/file/d/1V56vGTsu7GYiQouCIKvTWl5UKCZ6yCNu/view?usp=shari
 third_party/DexiNed/checkpoints/BIPED/10/10_model.pth
 ```
 
-模型大小约：
+也可以切换回 **快速 Canny** 模式，不需要额外模型，速度更快。
+
+## 技术路线 / Technical Approach
+
+DiffEye 的结构比对流程：
 
 ```text
-134.53 MB
+两张图像
+→ 检查宽高比例是否一致（不一致则拒绝）
+→ 统一长边到 2048 像素
+→ 自动对齐（homography，可关闭）
+→ 灰度归一化
+→ 提取线条/边缘（Canny 或 DexiNed）
+→ 比较两张边缘图
+→ 标出新增、缺失、偏移
+→ 聚合差异点
+→ 生成聚焦区域
+→ 提供局部三栏审查
 ```
+
+具体说明：
+
+- **比例检查**：两张图宽高比例差异超过 3% 时拒绝比对，提示用户先裁切成相同比例。
+- **尺寸统一**：两张图长边统一缩放到 2048 像素，减少计算量。
+- **对齐**：先缩放到相同尺寸，再用 homography 微调纠正轻微透视/裁切差。匹配质量差时自动回退到纯缩放，避免扭曲。可在界面关闭。
+- **线条提取**：默认使用 DexiNed AI 边缘检测；也可切换为 Canny 快速模式。DexiNed 批量处理两张图，输入缩到 1024 像素加速推理。
+- **三色差异**：红色表示后图新增线条，蓝色表示后图缺失线条，黄色表示两边都有但位置略有偏移。可单独显示/隐藏。
+- **画框逻辑**：把相邻的差异点聚成一组，生成外接矩形，形成"聚焦区域"。
+- **辅助审图**：按聚焦区域逐个复核，双击打开三栏弹窗查看局部，弹窗适应屏幕大小。
+
+DiffEye 不替代专家判断，它的作用是把可能有结构变化的位置提前整理出来，减少人工搜索成本。
+
+## 目录结构 / Directory Structure
+
+```text
+DiffEye/
+├── server.js              # Node.js 后端服务
+├── mural_compare.py        # Python 图像比对核心
+├── dexined_edges.py        # DexiNed 边缘检测脚本
+├── 启动DiffEye.bat          # 零安装版启动器
+├── start-tool.bat          # 源码版启动器
+├── install.bat             # 源码版依赖安装
+├── setup-dexined.bat       # DexiNed 配置脚本（源码版）
+├── package.json
+├── public/                 # 前端界面
+│   ├── index.html
+│   ├── app.js
+│   ├── styles.css
+│   └── assets/
+├── runtime/                # 零安装版运行环境（仅零安装版）
+│   ├── node/               # 便携 Node.js
+│   └── python/             # 便携 Python + 依赖
+├── third_party/
+│   └── DexiNed/            # DexiNed 仓库 + 模型权重
+├── runs/                   # 比对结果缓存（自动生成）
+└── docs/
+    └── USAGE.md
+```
+
+## API 端点 / API Endpoints
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 服务状态、Python 路径、DexiNed 可用性 |
+| GET | `/history` | 历史图片列表 |
+| DELETE | `/history` | 清空历史和缓存 |
+| POST | `/compare` | 执行比对（mural 或 pixel 模式） |
 
 ## 文档 / Documentation
 
@@ -169,8 +230,26 @@ third_party/DexiNed/checkpoints/BIPED/10/10_model.pth
 检测数量：120
 容错px：10
 最大区域%：60
-线条模式：快速 Canny 或 精细 DexiNed
+线条模式：精细 DexiNed（默认）或 快速 Canny
+自动对齐：开（比例一致时建议开启）
 ```
+
+## 版本历史 / Changelog
+
+### V0.5.0
+
+- 零安装版：内置 Node.js + Python + PyTorch + DexiNed 模型，双击即用
+- DexiNed 设为默认边缘模式
+- 比例检查：宽高比例不一致时拒绝比对
+- 尺寸统一：长边缩放到 2048 像素
+- 暗色模式、批量比对、报告导出、键盘导航、清空历史
+- Homography 质量检查，不稳定时回退纯缩放
+- 弹窗适应屏幕、自动清理缓存
+- 修复多个 bug（大图内存、扩展名大小写、浏览器抢先等）
+
+### V0.4
+
+- 初始版本，Canny + 可选 DexiNed
 
 ## 许可证 / License
 
