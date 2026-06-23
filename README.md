@@ -1,4 +1,4 @@
-# DiffEye | 重明 | 图像比对工具 V0.4
+# DiffEye | 重明 | 图像比对工具 V0.5.0
 
 <p align="center">
   <img src="public/assets/chongming-logo.png" alt="DiffEye 重明 Logo" width="180">

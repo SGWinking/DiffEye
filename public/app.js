@@ -59,6 +59,9 @@ let draggingSplit = false;
 let modalScale = 3;
 let diffLayerImages = {};
 let activeRegionId = null;
+let lastCompareResult = null;
+let batchQueue = [];
+let batchRunning = false;
 const reviewLabels = {
   pass: "通过",
   review: "复核",
@@ -87,9 +90,9 @@ function ensureEdgeMethodControl() {
   label.className = "number-field";
   label.innerHTML = `
     线条模式
-    <select name="edgeMethod" title="DexiNed 需要先运行 setup-dexined.bat 并放入模型权重">
-      <option value="canny" selected>快速 Canny</option>
-      <option value="dexined">精细 DexiNed</option>
+    <select name="edgeMethod" title="DexiNed 精细 AI 边缘检测，适合复杂纹样">
+      <option value="canny">快速 Canny</option>
+      <option value="dexined" selected>精细 DexiNed</option>
     </select>
   `;
 
@@ -115,22 +118,6 @@ function compactHistoryAndMetrics() {
 function applyDefaultParameters() {
   const minAreaInput = form.querySelector('input[name="minArea"]');
   if (minAreaInput && minAreaInput.value === "280") minAreaInput.value = "2048";
-}
-
-function ensureDiffLegend() {
-  if (document.querySelector(".diff-legend")) return;
-  const diffHeader = diffMaxButton?.closest("header");
-  const tools = diffHeader?.querySelector(".viewer-tools");
-  if (!tools) return;
-
-  const legend = document.createElement("div");
-  legend.className = "diff-legend";
-  legend.innerHTML = `
-    <span><i class="legend-red"></i>新增</span>
-    <span><i class="legend-blue"></i>缺失</span>
-    <span><i class="legend-yellow"></i>偏移</span>
-  `;
-  tools.insertAdjacentElement("afterbegin", legend);
 }
 
 function ensureDiffLegend() {
@@ -462,11 +449,20 @@ function openRegion(id) {
   const region = currentRegions.find((item) => item.id === id);
   if (!region) return;
   activeRegionId = id;
-  modalScale = 3;
+  modalScale = 1;
   modalImage.style.width = "";
   modalImage.src = `${region.cropUrl}?t=${Date.now()}`;
   renderReviewActions(id);
   modal.hidden = false;
+}
+
+function fitModalToScreen() {
+  if (!modalImage.naturalWidth) return;
+  const maxW = window.innerWidth - 80;
+  const maxH = window.innerHeight - 160;
+  const fit = Math.min(maxW / modalImage.naturalWidth, maxH / modalImage.naturalHeight, 1);
+  modalScale = fit;
+  modalImage.style.width = `${Math.max(1, Math.round(modalImage.naturalWidth * modalScale))}px`;
 }
 
 function updateModalZoom() {
@@ -476,6 +472,177 @@ function updateModalZoom() {
 
 function closeModal() {
   modal.hidden = true;
+}
+
+function navigateRegion(direction) {
+  if (!currentRegions.length) return;
+  const ids = currentRegions.map((r) => r.id);
+  const currentIndex = selectedRegionId ? ids.indexOf(selectedRegionId) : -1;
+  let nextIndex = currentIndex + direction;
+  if (nextIndex < 0) nextIndex = ids.length - 1;
+  if (nextIndex >= ids.length) nextIndex = 0;
+  selectRegion(ids[nextIndex], true, true);
+}
+
+function exportReport(format) {
+  if (!lastCompareResult) {
+    statusEl.textContent = "没有可导出的比对结果";
+    statusEl.classList.add("error");
+    return;
+  }
+  const r = lastCompareResult;
+  const reviews = {};
+  for (const region of r.regions || []) {
+    reviews[region.id] = getRegionReview(region.id);
+  }
+  const params = {
+    mode: r.mode,
+    sensitivity: sensitivity.value,
+    minArea: form.querySelector('input[name="minArea"]')?.value,
+    maxRegions: form.querySelector('input[name="maxRegions"]')?.value,
+    maxAreaPercent: form.querySelector('input[name="maxAreaPercent"]')?.value,
+    tolerancePixels: form.querySelector('input[name="tolerancePixels"]')?.value,
+    edgeMethod: form.querySelector('select[name="edgeMethod"]')?.value
+  };
+  let blob, filename, mime;
+  if (format === "json") {
+    const payload = { ...r, params, reviews, exportedAt: new Date().toISOString() };
+    blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    filename = `diffeeye-report-${Date.now()}.json`;
+    mime = "application/json";
+  } else {
+    const lines = [];
+    lines.push(`# DiffEye 比对报告`);
+    lines.push("");
+    lines.push(`- 导出时间: ${new Date().toLocaleString("zh-CN")}`);
+    lines.push(`- 模式: ${r.mode === "mural" ? "壁画纹样" : "像素差异"}`);
+    lines.push(`- 结果: ${r.match ? "未发现明显差异" : "发现差异"}`);
+    lines.push(`- 差异像素: ${r.diffCount?.toLocaleString() ?? "-"}`);
+    lines.push(`- 差异比例: ${typeof r.diffPercentage === "number" ? r.diffPercentage.toFixed(4) + "%" : "-"}`);
+    if (r.alignment) lines.push(`- 对齐: ${r.alignment.method}${r.alignment.aligned ? " 已对齐" : " 粗对齐"}`);
+    lines.push(`- 聚焦区域数: ${r.regionCount ?? (r.regions?.length || 0)}`);
+    lines.push("");
+    lines.push(`## 参数`);
+    lines.push("");
+    for (const [k, v] of Object.entries(params)) if (v != null) lines.push(`- ${k}: ${v}`);
+    lines.push("");
+    if (r.regions?.length) {
+      lines.push(`## 聚焦区域`);
+      lines.push("");
+      lines.push(`| # | 尺寸 | 新增 | 缺失 | 偏移 | 密度 | 审核 |`);
+      lines.push(`|---|------|------|------|------|------|------|`);
+      for (const region of r.regions) {
+        const review = reviews[region.id] ? reviewLabels[reviews[region.id]] || reviews[region.id] : "-";
+        lines.push(`| ${region.id} | ${region.w}x${region.h} | ${region.newPixels ?? 0} | ${region.missingPixels ?? 0} | ${region.shiftedPixels ?? 0} | ${region.density ?? 0}% | ${review} |`);
+      }
+    }
+    blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+    filename = `diffeeye-report-${Date.now()}.md`;
+    mime = "text/markdown";
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  statusEl.textContent = `已导出 ${filename}`;
+  statusEl.classList.remove("error");
+}
+
+async function clearHistory() {
+  if (!confirm("确认清空所有历史记录和比对缓存？此操作不可撤销。")) return;
+  try {
+    const res = await fetch("/history", { method: "DELETE" });
+    const data = await res.json();
+    statusEl.textContent = `已清空历史（删除 ${data.deletedRuns} 个缓存目录）`;
+    statusEl.classList.remove("error");
+    await loadHistory();
+  } catch (err) {
+    statusEl.textContent = `清空失败: ${err.message}`;
+    statusEl.classList.add("error");
+  }
+}
+
+function applyDarkMode(enabled) {
+  document.documentElement.classList.toggle("dark", enabled);
+  localStorage.setItem("diffeeye-dark", enabled ? "1" : "0");
+  const toggle = document.querySelector("#darkModeToggle");
+  if (toggle) toggle.textContent = enabled ? "亮色" : "暗色";
+}
+
+function initDarkMode() {
+  const stored = localStorage.getItem("diffeeye-dark") === "1";
+  applyDarkMode(stored);
+}
+
+function renderBatchQueue() {
+  const list = document.querySelector("#batchList");
+  if (!list) return;
+  list.textContent = "";
+  batchQueue.forEach((pair, index) => {
+    const item = document.createElement("div");
+    item.className = "batch-item";
+    const statusText = pair.status ? ` · ${pair.status}` : "";
+    item.innerHTML = `<span>#${index + 1}</span><span>${pair.baseName}</span><span>↔</span><span>${pair.compareName}</span><span class="batch-status">${statusText}</span><button type="button" data-batch-remove="${index}" class="tool-button">移除</button>`;
+    list.appendChild(item);
+  });
+  list.querySelectorAll("[data-batch-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      batchQueue.splice(Number(btn.dataset.batchRemove), 1);
+      renderBatchQueue();
+    });
+  });
+}
+
+function toggleBatchMode(enabled) {
+  const panel = document.querySelector("#batchPanel");
+  const singleBtn = document.querySelector("#compareButton");
+  const batchRunBtn = document.querySelector("#batchRunButton");
+  if (!panel) return;
+  panel.hidden = !enabled;
+  if (singleBtn) singleBtn.hidden = enabled;
+  if (batchRunBtn) batchRunBtn.hidden = !enabled;
+}
+
+async function runBatch() {
+  if (!batchQueue.length || batchRunning) return;
+  batchRunning = true;
+  const runBtn = document.querySelector("#batchRunButton");
+  if (runBtn) runBtn.disabled = true;
+  for (let i = 0; i < batchQueue.length; i++) {
+    const pair = batchQueue[i];
+    pair.status = "比对中";
+    renderBatchQueue();
+    try {
+      const fd = new FormData();
+      fd.append("base", pair.baseFile);
+      fd.append("compare", pair.compareFile);
+      fd.append("mode", pair.mode || "mural");
+      if (pair.mode !== "pixel") {
+        fd.append("sensitivity", sensitivity.value);
+        fd.append("minArea", form.querySelector('input[name="minArea"]')?.value || "2048");
+        fd.append("maxRegions", form.querySelector('input[name="maxRegions"]')?.value || "120");
+        fd.append("maxAreaPercent", form.querySelector('input[name="maxAreaPercent"]')?.value || "60");
+        fd.append("tolerancePixels", form.querySelector('input[name="tolerancePixels"]')?.value || "10");
+        fd.append("edgeMethod", form.querySelector('select[name="edgeMethod"]')?.value || "canny");
+      }
+      const res = await fetch("/compare", { method: "POST", body: fd });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "比对失败");
+      pair.status = result.match ? "无差异" : `发现 ${result.regionCount ?? 0} 处`;
+      pair.result = result;
+    } catch (err) {
+      pair.status = `失败: ${err.message}`;
+    }
+    renderBatchQueue();
+  }
+  batchRunning = false;
+  if (runBtn) runBtn.disabled = false;
+  statusEl.textContent = `批量完成（${batchQueue.length} 组）`;
+  statusEl.classList.remove("error");
 }
 
 baseInput.addEventListener("change", () => {
@@ -499,7 +666,7 @@ resultDiff.addEventListener("load", syncLayerSizes);
 window.addEventListener("resize", syncLayerSizes);
 compareMaxButton.addEventListener("click", () => toggleMaximized(compareMaxButton.closest(".viewer-card")));
 diffMaxButton.addEventListener("click", () => toggleMaximized(diffMaxButton.closest(".viewer-card")));
-modalImage.addEventListener("load", updateModalZoom);
+modalImage.addEventListener("load", fitModalToScreen);
 modalClose.addEventListener("click", closeModal);
 modal.addEventListener("click", (event) => {
   if (event.target === modal) closeModal();
@@ -508,11 +675,19 @@ modal.addEventListener("wheel", (event) => {
   if (modal.hidden) return;
   event.preventDefault();
   const direction = event.deltaY < 0 ? 1 : -1;
-  modalScale = Math.max(0.5, Math.min(8, modalScale + direction * 0.25));
+  modalScale = Math.max(0.2, Math.min(8, modalScale + direction * 0.15));
   updateModalZoom();
 }, { passive: false });
 window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !modal.hidden) closeModal();
+  if (event.key === "Escape" && !modal.hidden) {
+    closeModal();
+    return;
+  }
+  if (modal.hidden && !event.target.matches("input, select, textarea")) {
+    if (event.key === "ArrowLeft") navigateRegion(-1);
+    else if (event.key === "ArrowRight") navigateRegion(1);
+    else if (event.key === "Enter" && selectedRegionId) openRegion(selectedRegionId);
+  }
 });
 
 for (const input of viewModeInputs) input.addEventListener("change", updateViewMode);
@@ -548,8 +723,60 @@ applyDefaultParameters();
 ensureEdgeMethodControl();
 ensureDiffLegend();
 ensureRegionPanelTitle();
+initDarkMode();
 updateViewMode();
 loadHistory().catch(() => {});
+
+const darkModeToggle = document.querySelector("#darkModeToggle");
+if (darkModeToggle) darkModeToggle.addEventListener("click", () => applyDarkMode(!document.documentElement.classList.contains("dark")));
+
+const clearHistoryButton = document.querySelector("#clearHistoryButton");
+if (clearHistoryButton) clearHistoryButton.addEventListener("click", clearHistory);
+
+const exportJsonButton = document.querySelector("#exportJsonButton");
+if (exportJsonButton) exportJsonButton.addEventListener("click", () => exportReport("json"));
+const exportMdButton = document.querySelector("#exportMdButton");
+if (exportMdButton) exportMdButton.addEventListener("click", () => exportReport("md"));
+
+const batchToggle = document.querySelector("#batchToggle");
+if (batchToggle) {
+  batchToggle.addEventListener("change", () => {
+    toggleBatchMode(batchToggle.checked);
+    if (!batchToggle.checked) {
+      batchQueue = [];
+      renderBatchQueue();
+    }
+  });
+}
+
+const batchAddButton = document.querySelector("#batchAddButton");
+if (batchAddButton) {
+  batchAddButton.addEventListener("click", () => {
+    if (!baseInput.files.length || !compareInput.files.length) {
+      statusEl.textContent = "请先选择两张图再加入批量";
+      statusEl.classList.add("error");
+      return;
+    }
+    batchQueue.push({
+      baseFile: baseInput.files[0],
+      compareFile: compareInput.files[0],
+      baseName: baseInput.files[0].name,
+      compareName: compareInput.files[0].name,
+      mode: document.querySelector('input[name="mode"]:checked')?.value || "mural",
+      status: ""
+    });
+    baseInput.value = "";
+    compareInput.value = "";
+    setFileName(baseInput, baseName);
+    setFileName(compareInput, compareName);
+    renderBatchQueue();
+    statusEl.textContent = `批量队列: ${batchQueue.length} 组`;
+    statusEl.classList.remove("error");
+  });
+}
+
+const batchRunButton = document.querySelector("#batchRunButton");
+if (batchRunButton) batchRunButton.addEventListener("click", runBatch);
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -592,7 +819,9 @@ form.addEventListener("submit", async (event) => {
       : "-";
 
     renderRegions(result.regions || []);
+    lastCompareResult = { ...result, reviewedAt: new Date().toISOString() };
     statusEl.textContent = result.match ? "完成：未发现明显差异" : "完成：发现差异";
+    statusEl.classList.remove("error");
     updateViewMode();
     loadHistory().catch(() => {});
   } catch (error) {

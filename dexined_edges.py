@@ -46,35 +46,11 @@ def pad_to_multiple(image, multiple=16):
     return padded, height, width
 
 
-def main():
-    if len(sys.argv) != 3:
-        raise SystemExit("Usage: dexined_edges.py <input_image> <output_edge_image>")
-
-    input_path = os.path.abspath(sys.argv[1])
-    output_path = os.path.abspath(sys.argv[2])
-    root_dir = os.path.dirname(os.path.abspath(__file__))
-    dexined_dir = os.environ.get("DEXINED_DIR") or os.path.join(root_dir, "third_party", "DexiNed")
-
-    if not os.path.isdir(dexined_dir):
-        raise SystemExit(
-            "DexiNed is not configured. Run setup-dexined.bat first, or set DEXINED_DIR to the DexiNed repository path."
-        )
-
-    checkpoint = os.environ.get("DEXINED_CHECKPOINT") or find_checkpoint(dexined_dir)
-    if not checkpoint:
-        raise SystemExit(
-            "DexiNed checkpoint not found. Download the official checkpoint and put 10_model.pth under "
-            f"{os.path.join(dexined_dir, 'checkpoints', 'BIPED', '10')}"
-        )
-
+def run_model(input_paths, output_paths, dexined_dir, checkpoint):
     sys.path.insert(0, dexined_dir)
     from model import DexiNed
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    image = imread_unicode(input_path)
-    padded, original_h, original_w = pad_to_multiple(image)
-    rgb = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB).astype(np.float32)
-    tensor = torch.from_numpy(rgb.transpose(2, 0, 1)).unsqueeze(0).to(device)
 
     model = DexiNed().to(device)
     state = torch.load(checkpoint, map_location=device)
@@ -84,14 +60,47 @@ def main():
     model.load_state_dict(state, strict=False)
     model.eval()
 
-    with torch.no_grad():
-        pred = model(tensor)[-1]
-        pred = torch.sigmoid(pred)[0, 0].detach().cpu().numpy()
+    for input_path, output_path in zip(input_paths, output_paths):
+        image = imread_unicode(input_path)
+        padded, original_h, original_w = pad_to_multiple(image)
+        rgb = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB).astype(np.float32)
+        tensor = torch.from_numpy(rgb.transpose(2, 0, 1)).unsqueeze(0).to(device)
 
-    pred = pred[:original_h, :original_w]
-    pred = (pred - pred.min()) / max(1e-6, pred.max() - pred.min())
-    edge = (pred * 255).astype(np.uint8)
-    imwrite_unicode(output_path, edge)
+        with torch.no_grad():
+            pred = model(tensor)[-1]
+            pred = torch.sigmoid(pred)[0, 0].detach().cpu().numpy()
+
+        pred = pred[:original_h, :original_w]
+        pred = (pred - pred.min()) / max(1e-6, pred.max() - pred.min())
+        edge = (pred * 255).astype(np.uint8)
+        imwrite_unicode(output_path, edge)
+
+
+def main():
+    if len(sys.argv) < 3:
+        raise SystemExit("Usage: dexined_edges.py <input1> <output1> [<input2> <output2> ...]")
+
+    pairs = sys.argv[1:]
+    if len(pairs) % 2 != 0:
+        raise SystemExit("Arguments must be pairs of <input> <output>")
+
+    input_paths = [os.path.abspath(pairs[i]) for i in range(0, len(pairs), 2)]
+    output_paths = [os.path.abspath(pairs[i + 1]) for i in range(0, len(pairs), 2)]
+
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    dexined_dir = os.environ.get("DEXINED_DIR") or os.path.join(root_dir, "third_party", "DexiNed")
+
+    if not os.path.isdir(dexined_dir):
+        raise SystemExit("DexiNed is not configured. Run setup-dexined.bat first.")
+
+    checkpoint = os.environ.get("DEXINED_CHECKPOINT") or find_checkpoint(dexined_dir)
+    if not checkpoint:
+        raise SystemExit(
+            f"DexiNed checkpoint not found. Put 10_model.pth under "
+            f"{os.path.join(dexined_dir, 'checkpoints', 'BIPED', '10')}"
+        )
+
+    run_model(input_paths, output_paths, dexined_dir, checkpoint)
 
 
 if __name__ == "__main__":

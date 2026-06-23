@@ -12,9 +12,37 @@ const port = Number(process.env.PORT || 5055);
 const rootDir = __dirname;
 const runsDir = path.join(rootDir, "runs");
 const historyPath = path.join(rootDir, "image-history.json");
-const pythonPath = process.env.PYTHON310 || process.env.PYTHON || "python";
+
+const bundledPython = path.join(rootDir, "runtime", "python", "python.exe");
+const pythonPath = process.env.PYTHON310
+  || process.env.PYTHON
+  || (fs.existsSync(bundledPython) ? bundledPython : "python");
+
+const RUNS_MAX_AGE_DAYS = Number(process.env.RUNS_MAX_AGE_DAYS || 7);
 
 fs.mkdirSync(runsDir, { recursive: true });
+
+function cleanupOldRuns() {
+  const cutoff = Date.now() - RUNS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  let removed = 0;
+  let entries = [];
+  try { entries = fs.readdirSync(runsDir, { withFileTypes: true }); } catch { return 0; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dirPath = path.join(runsDir, entry.name);
+    try {
+      const stat = fs.statSync(dirPath);
+      if (stat.mtimeMs < cutoff) {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        removed += 1;
+      }
+    } catch {}
+  }
+  if (removed > 0) console.log(`[cleanup] removed ${removed} run(s) older than ${RUNS_MAX_AGE_DAYS} day(s).`);
+  return removed;
+}
+
+cleanupOldRuns();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -100,32 +128,41 @@ function resolveHistoryPath(value) {
 }
 
 function detectImageExtension(filePath) {
-  const header = fs.readFileSync(filePath, { encoding: null, flag: "r" }).subarray(0, 12);
-  if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47) return ".png";
-  if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return ".jpg";
-  if (header.toString("ascii", 0, 4) === "RIFF" && header.toString("ascii", 8, 12) === "WEBP") return ".webp";
-  if (
-    (header[0] === 0x49 && header[1] === 0x49 && header[2] === 0x2a && header[3] === 0x00) ||
-    (header[0] === 0x4d && header[1] === 0x4d && header[2] === 0x00 && header[3] === 0x2a)
-  ) {
-    return ".tiff";
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const buf = Buffer.alloc(12);
+    fs.readSync(fd, buf, 0, 12, 0);
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return ".png";
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return ".jpg";
+    if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return ".webp";
+    if (
+      (buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) ||
+      (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a)
+    ) {
+      return ".tiff";
+    }
+    return path.extname(filePath).toLowerCase();
+  } finally {
+    fs.closeSync(fd);
   }
-  return path.extname(filePath).toLowerCase();
 }
 
 function normalizeImageExtension(file) {
   const actualExt = detectImageExtension(file.path);
-  const currentExt = path.extname(file.path).toLowerCase();
-  if (!actualExt || actualExt === currentExt) return file;
+  const currentExt = path.extname(file.path);
+  if (!actualExt || actualExt === currentExt.toLowerCase()) return file;
 
-  const nextPath = path.join(path.dirname(file.path), `${path.basename(file.path, currentExt)}${actualExt}`);
+  const nextPath = path.join(
+    path.dirname(file.path),
+    `${path.basename(file.path, currentExt)}${actualExt}`
+  );
   fs.renameSync(file.path, nextPath);
   file.path = nextPath;
   file.filename = path.basename(nextPath);
   return file;
 }
 
-function runMuralCompare(
+function runMuralCompareOnce(
   basePath,
   comparePath,
   outDir,
@@ -134,7 +171,8 @@ function runMuralCompare(
   maxRegions,
   edgeMethod,
   maxAreaPercent,
-  tolerancePixels
+  tolerancePixels,
+  enableAlign
 ) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(rootDir, "mural_compare.py");
@@ -150,7 +188,8 @@ function runMuralCompare(
         String(maxRegions),
         edgeMethod,
         String(maxAreaPercent),
-        String(tolerancePixels)
+        String(tolerancePixels),
+        enableAlign ? "1" : "0"
       ],
       { cwd: rootDir, timeout: 180000, windowsHide: true, maxBuffer: 1024 * 1024 * 10 },
       (error, stdout, stderr) => {
@@ -168,13 +207,66 @@ function runMuralCompare(
   });
 }
 
+function isDexinedAvailable() {
+  const modelPy = path.join(rootDir, "third_party", "DexiNed", "model.py");
+  const checkpoint = path.join(rootDir, "third_party", "DexiNed", "checkpoints", "BIPED", "10", "10_model.pth");
+  return fs.existsSync(modelPy) && fs.existsSync(checkpoint);
+}
+
+async function runMuralCompare(
+  basePath,
+  comparePath,
+  outDir,
+  sensitivity,
+  minArea,
+  maxRegions,
+  edgeMethod,
+  maxAreaPercent,
+  tolerancePixels,
+  enableAlign
+) {
+  if (edgeMethod === "dexined" && !isDexinedAvailable()) {
+    throw new Error("DexiNed 不可用：缺少 model.py 或模型权重 10_model.pth。请检查 third_party/DexiNed/ 目录。");
+  }
+  return runMuralCompareOnce(
+    basePath, comparePath, outDir, sensitivity, minArea, maxRegions,
+    edgeMethod, maxAreaPercent, tolerancePixels, enableAlign
+  );
+}
+
 app.use(express.static(path.join(rootDir, "public")));
 app.use("/runs", express.static(runsDir));
 
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    python: fs.existsSync(pythonPath) ? pythonPath : "system",
+    bundledPython: fs.existsSync(bundledPython),
+    dexinedAvailable: isDexinedAvailable(),
+    uptime: process.uptime(),
+    port
+  });
+});
+
 app.get("/history", (req, res) => {
-  const items = readHistory().filter((item) => item.path && fs.existsSync(item.path) && isInsideRuns(item.path));
-  if (items.length !== readHistory().length) writeHistory(items);
+  const raw = readHistory();
+  const items = raw.filter((item) => item.path && fs.existsSync(item.path) && isInsideRuns(item.path));
+  if (items.length !== raw.length) writeHistory(items);
   res.json({ items });
+});
+
+app.delete("/history", (req, res) => {
+  let deletedRuns = 0;
+  try {
+    const entries = fs.readdirSync(runsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      fs.rmSync(path.join(runsDir, entry.name), { recursive: true, force: true });
+      deletedRuns += 1;
+    }
+  } catch {}
+  writeHistory([]);
+  res.json({ ok: true, deletedRuns });
 });
 
 app.post(
@@ -217,6 +309,7 @@ app.post(
         const edgeMethod = req.body.edgeMethod === "dexined" ? "dexined" : "canny";
         const maxAreaPercent = Math.max(1, Math.min(95, Number(req.body.maxAreaPercent || 60)));
         const tolerancePixels = Math.max(1, Math.min(30, Number(req.body.tolerancePixels || 10)));
+        const enableAlign = req.body.enableAlign !== "0";
         const result = await runMuralCompare(
           base.path,
           target.path,
@@ -226,7 +319,8 @@ app.post(
           maxRegions,
           edgeMethod,
           maxAreaPercent,
-          tolerancePixels
+          tolerancePixels,
+          enableAlign
         );
 
         res.json({
@@ -280,6 +374,17 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: error.message || "比较失败。" });
 });
 
-app.listen(port, () => {
-  console.log(`Image comparison tool is running at http://localhost:${port}`);
+const server = app.listen(port, () => {
+  console.log(`DiffEye is running at http://localhost:${port}`);
+  console.log(`Python: ${pythonPath}`);
+  console.log(`Runs auto-cleanup: older than ${RUNS_MAX_AGE_DAYS} day(s).`);
 });
+
+function shutdown(signal) {
+  console.log(`\n[${signal}] shutting down...`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1500).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

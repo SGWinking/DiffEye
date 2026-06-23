@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DiffEye | 重明 | 图像比对工具 V0.4</title>
+  <title>DiffEye | 重明 | 图像比对工具 V0.5.0</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -11,10 +11,15 @@
     <header class="topbar">
       <div>
         <img class="brand-logo" src="./assets/chongming-logo.png" alt="重明 Logo">
-        <h1>DiffEye | 重明 | 图像比对工具 V0.4</h1>
+        <h1>DiffEye | 重明 | 图像比对工具 V0.5.0</h1>
         <p>CHONGMING | DiffEye · Author: SGWinking / 上官文卿</p>
       </div>
-      <div id="status" class="status">待选择图片</div>
+      <div class="topbar-actions">
+        <button id="darkModeToggle" class="tool-button" type="button">暗色</button>
+        <button id="exportJsonButton" class="tool-button" type="button">导出JSON</button>
+        <button id="exportMdButton" class="tool-button" type="button">导出MD</button>
+        <div id="status" class="status">待选择图片</div>
+      </div>
     </header>
 
     <section class="compare-panel">
@@ -37,17 +42,27 @@
           <label class="range-field">灵敏度 <input id="sensitivity" name="sensitivity" type="range" min="1" max="10" value="5"> <span id="sensitivityValue">5</span></label>
           <label class="number-field">最小区域 <input name="minArea" type="number" min="40" max="5000" value="280"></label>
           <label class="number-field">检测数量 <input name="maxRegions" type="number" min="20" max="300" value="120"></label>
+          <label class="batch-toggle-field"><input name="enableAlign" type="checkbox" checked> 自动对齐</label>
+          <label class="batch-toggle-field"><input id="batchToggle" type="checkbox"> 批量模式</label>
         </div>
 
         <button id="compareButton" type="submit">开始比较</button>
+        <button id="batchRunButton" class="tool-button" type="button" hidden>运行批量比对</button>
 
         <div class="history-row">
           <label>第一张历史 <select id="baseHistorySelect"></select></label>
           <label>第二张历史 <select id="compareHistorySelect"></select></label>
           <button id="refreshHistoryButton" class="tool-button" type="button">刷新历史</button>
+          <button id="clearHistoryButton" class="tool-button" type="button">清空历史</button>
           <input id="baseHistoryPath" name="baseHistoryPath" type="hidden">
           <input id="compareHistoryPath" name="compareHistoryPath" type="hidden">
         </div>
+
+        <section id="batchPanel" class="batch-panel" hidden>
+          <header><h2>批量比对队列</h2></header>
+          <div id="batchList" class="batch-list"></div>
+          <button id="batchAddButton" class="tool-button" type="button">把当前两张图加入队列</button>
+        </section>
       </form>
     </section>
 

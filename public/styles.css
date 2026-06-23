@@ -10,6 +10,26 @@
   --warn: #b42318;
   --mark: #f6c000;
   --selected: #ff2d2d;
+  --soft-bg: var(--soft-bg);
+  --checker-1: #eef1f4;
+  --checker-2: #fafafa;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --bg: #0f1419;
+  --surface: #1a2029;
+  --line: #2d3748;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #14b8a6;
+  --accent-strong: #0d9488;
+  --warn: #f87171;
+  --mark: #facc15;
+  --selected: #f87171;
+  --soft-bg: #1f2630;
+  --checker-1: #2a313c;
+  --checker-2: #161b22;
 }
 
 * {
@@ -22,6 +42,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .app {
@@ -36,6 +57,17 @@ body {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 10px;
+}
+
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.topbar-actions .status {
+  margin-left: 4px;
 }
 
 .topbar > div:first-child {
@@ -116,7 +148,7 @@ p {
   padding: 8px 10px;
   border: 1px dashed #98a2b3;
   border-radius: 6px;
-  background: #fbfcfd;
+  background: var(--soft-bg);
   cursor: pointer;
   overflow: hidden;
 }
@@ -157,7 +189,7 @@ p {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fbfcfd;
+  background: var(--soft-bg);
 }
 
 .history-row {
@@ -180,7 +212,7 @@ p {
   min-height: 32px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
   color: var(--text);
 }
 
@@ -253,7 +285,7 @@ button:disabled {
 
 .metrics div {
   padding: 7px 10px;
-  background: #fbfcfd;
+  background: var(--soft-bg);
 }
 
 .metrics span {
@@ -314,7 +346,7 @@ button:disabled {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
 }
 
 .segment-control label {
@@ -352,7 +384,7 @@ button:disabled {
   padding: 4px 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
   color: var(--text);
   font-size: 12px;
 }
@@ -391,11 +423,11 @@ button:disabled {
   position: relative;
   overflow: auto;
   background:
-    linear-gradient(45deg, #eef1f4 25%, transparent 25%),
-    linear-gradient(-45deg, #eef1f4 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eef1f4 75%),
-    linear-gradient(-45deg, transparent 75%, #eef1f4 75%);
-  background-color: #fafafa;
+    linear-gradient(45deg, var(--checker-1) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-1) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-1) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-1) 75%);
+  background-color: var(--checker-2);
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   background-size: 20px 20px;
 }
@@ -545,7 +577,7 @@ button:disabled {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fbfcfd;
+  background: var(--soft-bg);
   color: var(--text);
   text-align: left;
   outline: none;
@@ -623,8 +655,8 @@ button:disabled {
 }
 
 .modal img {
-  max-width: none;
-  max-height: none;
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 160px);
   border-radius: 6px;
   background: white;
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.38);
@@ -701,6 +733,56 @@ button:disabled {
 
 .error {
   color: var(--warn);
+}
+
+.batch-toggle-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.batch-panel {
+  grid-column: 1 / -1;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft-bg);
+}
+
+.batch-panel header {
+  margin-bottom: 8px;
+}
+
+.batch-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.batch-item {
+  display: grid;
+  grid-template-columns: 32px 1fr 16px 1fr auto 64px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.batch-item .batch-status {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.topbar-actions .tool-button {
+  min-height: 32px;
 }
 
 @media (max-width: 1280px) {

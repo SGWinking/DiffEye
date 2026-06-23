@@ -24,13 +24,27 @@ def imwrite_unicode(path, image):
     buffer.tofile(path)
 
 
-def fit_to_max(image, max_dim=1800):
+def fit_to_max(image, max_dim=2048):
     height, width = image.shape[:2]
     scale = min(1.0, max_dim / max(height, width))
     if scale == 1.0:
         return image, 1.0
     size = (max(1, int(width * scale)), max(1, int(height * scale)))
     return cv2.resize(image, size, interpolation=cv2.INTER_AREA), scale
+
+
+def check_aspect_ratio(base, compare, tolerance=0.03):
+    bh, bw = base.shape[:2]
+    ch, cw = compare.shape[:2]
+    base_ratio = bw / bh
+    compare_ratio = cw / ch
+    ratio_diff = abs(base_ratio - compare_ratio) / max(base_ratio, compare_ratio)
+    return {
+        "ok": ratio_diff < tolerance,
+        "baseSize": {"w": bw, "h": bh, "ratio": round(base_ratio, 4)},
+        "compareSize": {"w": cw, "h": ch, "ratio": round(compare_ratio, 4)},
+        "ratioDiff": round(ratio_diff, 4),
+    }
 
 
 def normalize_gray(image):
@@ -40,16 +54,25 @@ def normalize_gray(image):
     return clahe.apply(gray)
 
 
-def align_to_base(base, compare):
+def align_to_base(base, compare, enable_align=True):
+    bh, bw = base.shape[:2]
+    ch, cw = compare.shape[:2]
+
+    # 比例一致：先统一到 base 尺寸（纯缩放不扭曲）
+    resized = cv2.resize(compare, (bw, bh), interpolation=cv2.INTER_AREA)
+
+    if not enable_align:
+        return resized, {"aligned": False, "method": "disabled", "matches": 0}
+
+    # 比例已一致，尝试 homography 微调对齐（纠正轻微透视/裁切差）
     base_gray = normalize_gray(base)
-    compare_gray = normalize_gray(compare)
+    compare_gray = normalize_gray(resized)
 
     orb = cv2.ORB_create(nfeatures=6000, scaleFactor=1.2, nlevels=8)
     kp1, des1 = orb.detectAndCompute(base_gray, None)
     kp2, des2 = orb.detectAndCompute(compare_gray, None)
 
     if des1 is None or des2 is None or len(kp1) < 12 or len(kp2) < 12:
-        resized = cv2.resize(compare, (base.shape[1], base.shape[0]), interpolation=cv2.INTER_AREA)
         return resized, {"aligned": False, "method": "resize", "matches": 0}
 
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -58,7 +81,6 @@ def align_to_base(base, compare):
     matches = matches[: min(500, len(matches))]
 
     if len(matches) < 12:
-        resized = cv2.resize(compare, (base.shape[1], base.shape[0]), interpolation=cv2.INTER_AREA)
         return resized, {"aligned": False, "method": "resize", "matches": len(matches)}
 
     src = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
@@ -66,18 +88,52 @@ def align_to_base(base, compare):
     matrix, inliers = cv2.findHomography(src, dst, cv2.RANSAC, 4.0)
 
     if matrix is None:
-        resized = cv2.resize(compare, (base.shape[1], base.shape[0]), interpolation=cv2.INTER_AREA)
         return resized, {"aligned": False, "method": "resize", "matches": len(matches)}
 
+    inlier_count = int(inliers.sum()) if inliers is not None else 0
+    inlier_ratio = inlier_count / max(1, len(matches))
+
+    # 检查 homography 矩阵质量，防止扭曲
+    det = np.linalg.det(matrix)
+    corners = np.float32([[0, 0], [float(bw), 0], [float(bw), float(bh)], [0, float(bh)]]).reshape(-1, 1, 2)
+    transformed = cv2.perspectiveTransform(corners, matrix).reshape(-1, 2)
+    corner_span_w = float(transformed[:, 0].max() - transformed[:, 0].min())
+    corner_span_h = float(transformed[:, 1].max() - transformed[:, 1].min())
+
+    bad_align = (
+        inlier_ratio < 0.25
+        or abs(det) < 0.05
+        or abs(det) > 20.0
+        or corner_span_w < bw * 0.3
+        or corner_span_w > bw * 3.0
+        or corner_span_h < bh * 0.3
+        or corner_span_h > bh * 3.0
+    )
+
+    if bad_align:
+        return resized, {
+            "aligned": False,
+            "method": "resize",
+            "matches": len(matches),
+            "inliers": inlier_count,
+            "inlierRatio": round(inlier_ratio, 3),
+            "fallbackReason": "homography unstable",
+        }
+
     aligned = cv2.warpPerspective(
-        compare,
+        resized,
         matrix,
-        (base.shape[1], base.shape[0]),
+        (bw, bh),
         flags=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_REPLICATE,
     )
-    inlier_count = int(inliers.sum()) if inliers is not None else 0
-    return aligned, {"aligned": True, "method": "homography", "matches": len(matches), "inliers": inlier_count}
+    return aligned, {
+        "aligned": True,
+        "method": "homography",
+        "matches": len(matches),
+        "inliers": inlier_count,
+        "inlierRatio": round(inlier_ratio, 3),
+    }
 
 
 def adaptive_edges(gray, sensitivity):
@@ -93,14 +149,31 @@ def adaptive_edges(gray, sensitivity):
     return cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=1)
 
 
-def dexined_edges(image, out_dir, name, sensitivity):
-    input_path = os.path.join(out_dir, f"{name}-dexined-input.png")
-    output_path = os.path.join(out_dir, f"{name}-dexined-edge.png")
-    imwrite_unicode(input_path, image)
+def dexined_edges_batch(images, out_dir, names, sensitivity):
+    input_paths = []
+    output_paths = []
+    max_dim = 1024
+    resized_meta = []
+
+    for image, name in zip(images, names):
+        h, w = image.shape[:2]
+        scale = min(1.0, max_dim / max(h, w))
+        if scale < 1.0:
+            small = cv2.resize(image, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+        else:
+            small = image
+        resized_meta.append((image.shape[:2], small.shape[:2]))
+
+        input_path = os.path.join(out_dir, f"{name}-dexined-input.png")
+        output_path = os.path.join(out_dir, f"{name}-dexined-edge.png")
+        imwrite_unicode(input_path, small)
+        input_paths.append(input_path)
+        output_paths.append(output_path)
 
     runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dexined_edges.py")
+    args = [sys.executable, runner] + sum(([i, o] for i, o in zip(input_paths, output_paths)), [])
     completed = subprocess.run(
-        [sys.executable, runner, input_path, output_path],
+        args,
         cwd=os.path.dirname(os.path.abspath(__file__)),
         capture_output=True,
         text=True,
@@ -109,21 +182,23 @@ def dexined_edges(image, out_dir, name, sensitivity):
     if completed.returncode != 0:
         raise RuntimeError(completed.stderr or completed.stdout or "DexiNed edge extraction failed.")
 
-    edge = imread_unicode(output_path)
-    edge = cv2.cvtColor(edge, cv2.COLOR_BGR2GRAY)
-    if edge.shape[:2] != image.shape[:2]:
-        edge = cv2.resize(edge, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_AREA)
-
-    keep_percent = max(3.0, min(16.0, 3.5 + float(sensitivity) * 1.15))
-    threshold = np.percentile(edge, 100.0 - keep_percent)
-    binary = np.where(edge >= threshold, 255, 0).astype(np.uint8)
-    kernel = np.ones((2, 2), np.uint8)
-    return cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+    results = []
+    for image, output_path, (orig_shape, small_shape) in zip(images, output_paths, resized_meta):
+        edge = imread_unicode(output_path)
+        edge = cv2.cvtColor(edge, cv2.COLOR_BGR2GRAY)
+        if edge.shape[:2] != (orig_shape[0], orig_shape[1]):
+            edge = cv2.resize(edge, (orig_shape[1], orig_shape[0]), interpolation=cv2.INTER_LINEAR)
+        keep_percent = max(3.0, min(16.0, 3.5 + float(sensitivity) * 1.15))
+        threshold = np.percentile(edge, 100.0 - keep_percent)
+        binary = np.where(edge >= threshold, 255, 0).astype(np.uint8)
+        kernel = np.ones((2, 2), np.uint8)
+        results.append(cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1))
+    return results
 
 
 def extract_edges(image, gray, sensitivity, edge_method, out_dir, name):
     if edge_method == "dexined":
-        return dexined_edges(image, out_dir, name, sensitivity)
+        return dexined_edges_batch([image], out_dir, [name], sensitivity)[0]
     return adaptive_edges(gray, sensitivity)
 
 
@@ -202,6 +277,7 @@ def compare_mural(
     edge_method="canny",
     max_area_percent=45,
     tolerance_pixels=6,
+    enable_align=True,
 ):
     os.makedirs(out_dir, exist_ok=True)
 
@@ -209,14 +285,30 @@ def compare_mural(
     compare = imread_unicode(compare_path)
     base, scale = fit_to_max(base)
     compare, _ = fit_to_max(compare)
-    aligned_compare, align_info = align_to_base(base, compare)
+
+    ratio_check = check_aspect_ratio(base, compare)
+    if not ratio_check["ok"]:
+        raise RuntimeError(
+            "两张图片宽高比例不一致，无法比对。"
+            f" 第一张 {ratio_check['baseSize']['w']}x{ratio_check['baseSize']['h']}"
+            f" 第二张 {ratio_check['compareSize']['w']}x{ratio_check['compareSize']['h']}"
+            f" 比例差异 {ratio_check['ratioDiff']}（需小于0.03）。"
+            "请先用图像编辑工具把两张图裁切成相同比例再比对。"
+        )
+
+    aligned_compare, align_info = align_to_base(base, compare, enable_align=enable_align)
 
     base_gray = normalize_gray(base)
     compare_gray = normalize_gray(aligned_compare)
 
     edge_method = edge_method if edge_method in {"canny", "dexined"} else "canny"
-    base_edges = extract_edges(base, base_gray, sensitivity, edge_method, out_dir, "base")
-    compare_edges = extract_edges(aligned_compare, compare_gray, sensitivity, edge_method, out_dir, "compare")
+    if edge_method == "dexined":
+        base_edges, compare_edges = dexined_edges_batch(
+            [base, aligned_compare], out_dir, ["base", "compare"], sensitivity
+        )
+    else:
+        base_edges = adaptive_edges(base_gray, sensitivity)
+        compare_edges = adaptive_edges(compare_gray, sensitivity)
 
     tolerance = max(1, min(30, int(round(float(tolerance_pixels)))))
     tol_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (tolerance * 2 + 1, tolerance * 2 + 1))
@@ -367,7 +459,7 @@ def compare_mural(
 
 def main():
     if len(sys.argv) < 4:
-        raise SystemExit("Usage: mural_compare.py <base> <compare> <out_dir> [sensitivity] [min_area] [max_regions] [edge_method] [max_area_percent] [tolerance_pixels]")
+        raise SystemExit("Usage: mural_compare.py <base> <compare> <out_dir> [sensitivity] [min_area] [max_regions] [edge_method] [max_area_percent] [tolerance_pixels] [enable_align]")
 
     base_path = sys.argv[1]
     compare_path = sys.argv[2]
@@ -378,6 +470,7 @@ def main():
     edge_method = sys.argv[7] if len(sys.argv) > 7 else "canny"
     max_area_percent = float(sys.argv[8]) if len(sys.argv) > 8 else 45
     tolerance_pixels = float(sys.argv[9]) if len(sys.argv) > 9 else 6
+    enable_align = sys.argv[10] != "0" if len(sys.argv) > 10 else True
 
     result = compare_mural(
         base_path,
@@ -389,6 +482,7 @@ def main():
         edge_method=edge_method,
         max_area_percent=max_area_percent,
         tolerance_pixels=tolerance_pixels,
+        enable_align=enable_align,
     )
     print(json.dumps(result, ensure_ascii=False))
 

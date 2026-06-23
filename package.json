@@ -1,6 +1,6 @@
 {
   "name": "diffeye",
-  "version": "1.0.0",
+  "version": "0.5.0",
   "description": "DiffEye visual review center for image structure and pixel comparison.",
   "license": "AGPL-3.0-only",
   "main": "server.js",
